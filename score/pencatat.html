@@ -1,0 +1,266 @@
+﻿<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pencatat Markah SUKANTARA SKKJ 2026</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap');
+    body { font-family: 'Sora', system-ui, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-100 text-slate-900">
+  <main class="mx-auto max-w-5xl p-4 md:p-6">
+    <header class="rounded-2xl border border-orange-200 bg-white/90 p-4 shadow-sm md:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl font-extrabold md:text-3xl">Pencatat Markah SUKANTARA SKKJ 2026</h1>
+          <p class="mt-1 text-sm text-slate-600">Mode laju: pilih rumah, tekan 2/1/0 markah.</p>
+        </div>
+        <div id="syncStatus" class="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase text-rose-700">Offline</div>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-2">
+        <label class="block">
+          <span class="text-xs font-bold uppercase text-slate-500">Nama Acara</span>
+          <input id="titleInput" type="text" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-orange-400 focus:ring" placeholder="Contoh: SUKANTARA SKKJ 2026" />
+        </label>
+        <label class="block">
+          <span class="text-xs font-bold uppercase text-slate-500">Pusingan / Acara Ke</span>
+          <input id="roundInput" type="number" min="0" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-orange-400 focus:ring" value="1" />
+        </label>
+      </div>
+
+      <div class="mt-3">
+        <label class="block">
+          <span class="text-xs font-bold uppercase text-slate-500">Acara Semasa</span>
+          <input id="eventInput" type="text" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-orange-400 focus:ring" placeholder="Contoh: Larian 80m" />
+        </label>
+      </div>
+    </header>
+
+    <section class="mt-5 rounded-2xl border border-orange-200 bg-white/90 p-4 shadow-sm">
+      <h2 class="text-sm font-extrabold uppercase tracking-wide text-slate-700">Pilih Rumah</h2>
+      <div id="quickTeamButtons" class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4"></div>
+
+      <h2 class="mt-4 text-sm font-extrabold uppercase tracking-wide text-slate-700">Tambah Markah</h2>
+      <div class="mt-3 grid grid-cols-3 gap-2 md:max-w-md">
+        <button data-quick-points="2" class="rounded-xl bg-emerald-600 px-4 py-3 text-base font-extrabold text-white hover:bg-emerald-500">2 MARKAH</button>
+        <button data-quick-points="1" class="rounded-xl bg-amber-500 px-4 py-3 text-base font-extrabold text-white hover:bg-amber-400">1 MARKAH</button>
+        <button data-quick-points="0" class="rounded-xl bg-slate-300 px-4 py-3 text-base font-extrabold text-slate-800 hover:bg-slate-200">0 MARKAH</button>
+      </div>
+      <div id="quickHint" class="mt-3 rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">Rumah dipilih: Rumah Merah</div>
+    </section>
+
+    <section id="teamGrid" class="mt-5 grid gap-3 md:grid-cols-2"></section>
+
+    <footer class="mt-5 flex flex-wrap gap-2">
+      <button id="saveBtn" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Simpan & Hantar Live</button>
+      <button id="resetBtn" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-500">Reset Semua Mata</button>
+      <a href="/tv" target="_blank" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-500">Buka Paparan TV</a>
+    </footer>
+  </main>
+
+<script>
+const DEFAULT_TEAMS = [
+  { key: 'A', name: 'Rumah Merah', quickClass: 'bg-red-600 text-white border-red-700' },
+  { key: 'B', name: 'Rumah Biru', quickClass: 'bg-blue-600 text-white border-blue-700' },
+  { key: 'C', name: 'Rumah Hijau', quickClass: 'bg-green-600 text-white border-green-700' },
+  { key: 'D', name: 'Rumah Kuning', quickClass: 'bg-yellow-300 text-black border-yellow-400' }
+];
+
+const state = {
+  title: 'SUKANTARA SKKJ 2026',
+  event: 'Larian 80m',
+  round: 1,
+  teamNames: Object.fromEntries(DEFAULT_TEAMS.map((t) => [t.key, t.name])),
+  scores: Object.fromEntries(DEFAULT_TEAMS.map((t) => [t.key, 0]))
+};
+
+let selectedTeamKey = 'A';
+
+const syncStatus = document.getElementById('syncStatus');
+const titleInput = document.getElementById('titleInput');
+const roundInput = document.getElementById('roundInput');
+const eventInput = document.getElementById('eventInput');
+const teamGrid = document.getElementById('teamGrid');
+const quickTeamButtons = document.getElementById('quickTeamButtons');
+const quickHint = document.getElementById('quickHint');
+const saveBtn = document.getElementById('saveBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function setSync(isOnline) {
+  if (isOnline) {
+    syncStatus.textContent = 'Live';
+    syncStatus.className = 'rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase text-emerald-700';
+    return;
+  }
+  syncStatus.textContent = 'Offline';
+  syncStatus.className = 'rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase text-rose-700';
+}
+
+function renderQuickTeams() {
+  quickTeamButtons.innerHTML = '';
+  DEFAULT_TEAMS.forEach((team) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.team = team.key;
+    const active = selectedTeamKey === team.key ? 'ring-4 ring-slate-700 scale-[1.02]' : 'opacity-90';
+    button.className = `rounded-xl border px-3 py-3 text-sm font-extrabold transition ${team.quickClass} ${active}`;
+    button.textContent = state.teamNames[team.key] || team.name;
+    quickTeamButtons.appendChild(button);
+  });
+  const selectedName = state.teamNames[selectedTeamKey] || selectedTeamKey;
+  quickHint.textContent = `Rumah dipilih: ${selectedName}`;
+}
+
+function renderTeams() {
+  teamGrid.innerHTML = '';
+  Object.keys(state.teamNames).forEach((key) => {
+    const card = document.createElement('article');
+    card.className = 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm';
+    card.innerHTML = `
+      <label class="block">
+        <span class="text-xs font-bold uppercase text-slate-500">Nama Rumah (${key})</span>
+        <input data-role="name" data-key="${key}" type="text" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-orange-400 focus:ring" />
+      </label>
+      <div class="mt-3 flex items-center justify-between">
+        <span class="text-xs font-bold uppercase text-slate-500">Markah</span>
+        <div class="flex items-center gap-2">
+          <button data-role="minus" data-key="${key}" class="h-10 w-10 rounded-xl bg-slate-200 text-lg font-extrabold hover:bg-slate-300">-</button>
+          <input data-role="score" data-key="${key}" type="number" min="0" class="h-10 w-20 rounded-xl border border-slate-300 text-center text-lg font-extrabold outline-none ring-orange-400 focus:ring" />
+          <button data-role="plus" data-key="${key}" class="h-10 w-10 rounded-xl bg-slate-900 text-lg font-extrabold text-white hover:bg-slate-800">+</button>
+        </div>
+      </div>
+    `;
+    teamGrid.appendChild(card);
+  });
+
+  titleInput.value = state.title;
+  eventInput.value = state.event;
+  roundInput.value = String(state.round);
+  syncFormFromState();
+  renderQuickTeams();
+}
+
+function syncFormFromState() {
+  Object.keys(state.teamNames).forEach((key) => {
+    const nameInput = document.querySelector(`[data-role="name"][data-key="${key}"]`);
+    const scoreInput = document.querySelector(`[data-role="score"][data-key="${key}"]`);
+    if (nameInput) nameInput.value = state.teamNames[key];
+    if (scoreInput) scoreInput.value = String(state.scores[key] || 0);
+  });
+}
+
+function collectFormToState() {
+  state.title = (titleInput.value || 'SUKANTARA SKKJ 2026').trim();
+  state.event = (eventInput.value || 'Larian 80m').trim();
+  state.round = Number(roundInput.value) || 0;
+  Object.keys(state.teamNames).forEach((key) => {
+    const nameInput = document.querySelector(`[data-role="name"][data-key="${key}"]`);
+    const scoreInput = document.querySelector(`[data-role="score"][data-key="${key}"]`);
+    state.teamNames[key] = (nameInput?.value || key).trim();
+    state.scores[key] = Math.max(0, Number(scoreInput?.value) || 0);
+  });
+}
+
+function emitState() {
+  collectFormToState();
+  socket.emit('state:update', {
+    round: state.round,
+    scores: state.scores,
+    settings: {
+      title: state.title,
+      eventName: state.event,
+      teamNames: state.teamNames,
+      useExternalScoreboard: true
+    }
+  });
+  renderQuickTeams();
+}
+
+function addPointsToSelectedTeam(points) {
+  const key = selectedTeamKey;
+  state.scores[key] = Math.max(0, Number(state.scores[key]) || 0) + points;
+  syncFormFromState();
+  emitState();
+}
+
+const socket = io(window.location.origin, { transports: ['websocket', 'polling'] });
+
+socket.on('connect', () => {
+  setSync(true);
+  socket.emit('state:register', { role: 'scorer', clientId: `scorer-${Math.random().toString(36).slice(2, 10)}` });
+  emitState();
+});
+
+socket.on('disconnect', () => setSync(false));
+
+socket.on('state:init', (payload) => {
+  if (!payload) return;
+  if (typeof payload.round === 'number') state.round = payload.round;
+  if (payload.settings?.title) state.title = payload.settings.title;
+  if (payload.settings?.eventName) state.event = payload.settings.eventName;
+  if (payload.settings?.teamNames) {
+    Object.keys(payload.settings.teamNames).forEach((key) => {
+      if (!(key in state.teamNames)) state.teamNames[key] = key;
+      state.teamNames[key] = payload.settings.teamNames[key] || key;
+      if (!(key in state.scores)) state.scores[key] = 0;
+    });
+  }
+  if (payload.scores) {
+    Object.keys(payload.scores).forEach((key) => {
+      if (!(key in state.scores)) state.scores[key] = 0;
+      state.scores[key] = Math.max(0, Number(payload.scores[key]) || 0);
+      if (!(key in state.teamNames)) state.teamNames[key] = key;
+    });
+  }
+  renderTeams();
+});
+
+quickTeamButtons.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-team]');
+  if (!button) return;
+  selectedTeamKey = button.dataset.team;
+  renderQuickTeams();
+});
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-quick-points]');
+  if (!button) return;
+  const points = Math.max(0, Number(button.dataset.quickPoints) || 0);
+  addPointsToSelectedTeam(points);
+});
+
+teamGrid.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-key]');
+  if (!button) return;
+  const key = button.dataset.key;
+  const scoreInput = document.querySelector(`[data-role="score"][data-key="${key}"]`);
+  const current = Math.max(0, Number(scoreInput?.value) || 0);
+  if (button.dataset.role === 'plus') scoreInput.value = String(current + 1);
+  if (button.dataset.role === 'minus') scoreInput.value = String(Math.max(0, current - 1));
+  emitState();
+});
+
+teamGrid.addEventListener('input', (event) => {
+  if (!event.target.matches('input[data-role="name"], input[data-role="score"]')) return;
+  emitState();
+});
+
+titleInput.addEventListener('input', emitState);
+eventInput.addEventListener('input', emitState);
+roundInput.addEventListener('input', emitState);
+saveBtn.addEventListener('click', emitState);
+resetBtn.addEventListener('click', () => {
+  Object.keys(state.scores).forEach((key) => { state.scores[key] = 0; });
+  syncFormFromState();
+  emitState();
+});
+
+renderTeams();
+</script>
+</body>
+</html>

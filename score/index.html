@@ -1,0 +1,228 @@
+﻿<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Paparan Markah Hari Sukan</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
+    body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+    .rank-card {
+      will-change: transform;
+    }
+    .rank-up {
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.45), 0 10px 24px rgba(16, 185, 129, 0.25);
+    }
+  </style>
+</head>
+<body class="h-screen bg-slate-900 flex items-center justify-center overflow-hidden m-0">
+  <div class="relative w-[min(100vw,calc(100vh*4/3))] h-[min(100vh,calc(100vw*3/4))] overflow-hidden">
+    <img src="/sb.png" alt="Scoreboard" class="absolute inset-0 w-full h-full object-contain select-none pointer-events-none" />
+
+    <div class="absolute left-[24.5%] right-[24.5%] top-[23.5%] bottom-[21%] flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between mb-1.5 px-1">
+        <div class="text-[9px] md:text-xs font-black uppercase tracking-wider text-slate-600">Mata Live</div>
+        <div id="syncStatus" class="text-[9px] md:text-xs font-black uppercase text-rose-500">Offline</div>
+      </div>
+
+      <div id="rankingGrid" class="flex flex-col gap-0 flex-1 overflow-hidden rounded-md"></div>
+
+      <div class="text-center mt-1.5 md:mt-2">
+        <span class="inline-flex items-center gap-2 rounded-full bg-white/90 border border-slate-300 px-2.5 py-0.5 text-[10px] md:text-xs font-bold text-slate-700">
+          Pusingan <span id="roundText" class="text-indigo-700">0</span>
+        </span>
+        <span class="inline-flex items-center gap-2 rounded-full bg-white/90 border border-slate-300 px-2.5 py-0.5 text-[10px] md:text-xs font-bold text-slate-700 mt-1">
+          Acara <span id="eventText" class="text-indigo-700">Larian 80m</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+<script>
+const roundText = document.getElementById('roundText');
+const eventText = document.getElementById('eventText');
+const syncStatus = document.getElementById('syncStatus');
+const rankingGrid = document.getElementById('rankingGrid');
+
+const COLOR_CLASSES = ['text-rose-700','text-amber-700','text-emerald-700','text-sky-700','text-violet-700','text-fuchsia-700','text-lime-700','text-orange-700','text-cyan-700','text-indigo-700'];
+let TEAMS = [
+  { key: 'A', name: 'Rumah Merah', color: 'text-rose-700' },
+  { key: 'B', name: 'Rumah Biru', color: 'text-sky-700' },
+  { key: 'C', name: 'Rumah Hijau', color: 'text-emerald-700' },
+  { key: 'D', name: 'Rumah Kuning', color: 'text-amber-700' }
+];
+
+const currentScores = {
+  A: 0,
+  B: 0,
+  C: 0,
+  D: 0
+};
+
+const rankCards = new Map();
+const prevRanks = new Map();
+
+function createCard(team) {
+  const card = document.createElement('div');
+  card.className = 'rank-card px-2 py-1 flex-1 min-h-0 flex items-center';
+  card.dataset.team = team.key;
+  card.innerHTML = `
+    <div class="w-full">
+    <div class="flex items-center justify-between gap-2">
+      <div class="team-name text-[9px] md:text-[11px] font-bold uppercase"></div>
+      <div class="team-rank text-[11px] md:text-xs font-black"></div>
+    </div>
+    <div class="team-score text-xl md:text-3xl font-black leading-none mt-0.5"></div>
+    </div>
+  `;
+  return card;
+}
+
+function getCardPalette(team, idx) {
+  const byKey = {
+    A: { bg: 'bg-red-600', text: 'text-white' },
+    B: { bg: 'bg-blue-600', text: 'text-white' },
+    C: { bg: 'bg-green-600', text: 'text-white' },
+    D: { bg: 'bg-yellow-300', text: 'text-black' }
+  };
+  return byKey[team.key] || {
+    bg: idx % 2 === 0 ? 'bg-slate-800' : 'bg-slate-700',
+    text: 'text-white'
+  };
+}
+
+function renderRanking() {
+  const sorted = [...TEAMS].sort((a, b) => {
+    const scoreDiff = (currentScores[b.key] || 0) - (currentScores[a.key] || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return a.key.localeCompare(b.key);
+  });
+
+  const firstRects = new Map();
+  rankCards.forEach((el, key) => {
+    firstRects.set(key, el.getBoundingClientRect());
+  });
+
+  sorted.forEach((team, idx) => {
+    let card = rankCards.get(team.key);
+    if (!card) {
+      card = createCard(team);
+      rankCards.set(team.key, card);
+    }
+    card.querySelector('.team-name').textContent = team.name;
+    card.querySelector('.team-rank').textContent = `#${idx + 1}`;
+    const palette = getCardPalette(team, idx);
+    card.className = `rank-card px-2 py-1 flex-1 min-h-0 flex items-center ${palette.bg} ${palette.text}`;
+    card.querySelector('.team-name').className = `team-name text-[9px] md:text-[11px] font-bold uppercase ${palette.text}`;
+    card.querySelector('.team-rank').className = `team-rank text-[11px] md:text-xs font-black ${palette.text}`;
+    const scoreEl = card.querySelector('.team-score');
+    scoreEl.textContent = String(currentScores[team.key] || 0);
+    scoreEl.className = `team-score text-xl md:text-3xl font-black ${palette.text} leading-none mt-0.5`;
+    rankingGrid.appendChild(card);
+    const previousRank = prevRanks.get(team.key);
+    if (typeof previousRank === 'number' && idx < previousRank) {
+      card.classList.add('rank-up');
+      setTimeout(() => card.classList.remove('rank-up'), 520);
+    }
+    prevRanks.set(team.key, idx);
+  });
+
+  rankCards.forEach((el, key) => {
+    const first = firstRects.get(key);
+    const last = el.getBoundingClientRect();
+    if (!first) return;
+    const dy = first.top - last.top;
+    if (Math.abs(dy) < 1) return;
+    el.animate(
+      [
+        { transform: `translateY(${dy}px)` },
+        { transform: 'translateY(0)' }
+      ],
+      {
+        duration: 520,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+      }
+    );
+  });
+}
+
+function setSync(online) {
+  if (online) {
+    syncStatus.textContent = 'Live';
+    syncStatus.className = 'text-[10px] md:text-sm font-black uppercase text-emerald-600';
+  } else {
+    syncStatus.textContent = 'Offline';
+    syncStatus.className = 'text-[10px] md:text-sm font-black uppercase text-rose-500';
+  }
+}
+
+function applyState(payload) {
+  if (!payload) return;
+  if (payload.settings && payload.settings.teamNames) {
+    const keys = Object.keys(payload.settings.teamNames);
+    TEAMS = keys.map((key, idx) => {
+      const existing = TEAMS.find((x) => x.key === key);
+      return {
+        key,
+        name: payload.settings.teamNames[key] || existing?.name || key,
+        color: existing?.color || COLOR_CLASSES[idx % COLOR_CLASSES.length]
+      };
+    });
+    keys.forEach((key) => {
+      if (typeof currentScores[key] !== 'number') currentScores[key] = 0;
+    });
+  }
+  if (payload.settings && payload.settings.title) {
+    document.title = payload.settings.title;
+  }
+  if (payload.settings && payload.settings.eventName) {
+    eventText.textContent = payload.settings.eventName;
+  }
+  if (payload.settings && payload.settings.useExternalScoreboard === false) {
+    syncStatus.textContent = 'Disabled by moderator';
+    syncStatus.className = 'text-[10px] md:text-sm font-black uppercase text-amber-600';
+  }
+  if (typeof payload.round === 'number') {
+    roundText.textContent = String(payload.round);
+  }
+  const scores = payload.scores || {};
+  Object.keys(currentScores).forEach((team) => {
+    if (typeof scores[team] === 'number') {
+      currentScores[team] = scores[team];
+    }
+  });
+  renderRanking();
+}
+
+function getRealtimeServerUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = (params.get('rt') || '').trim();
+  if (fromQuery) {
+    try {
+      localStorage.setItem('quiz_realtime_url', fromQuery);
+    } catch (_) {}
+    return fromQuery.replace(/\/+$/, '');
+  }
+
+  try {
+    const saved = (localStorage.getItem('quiz_realtime_url') || '').trim();
+    if (saved) return saved.replace(/\/+$/, '');
+  } catch (_) {}
+
+  return window.location.origin;
+}
+
+const socket = io(getRealtimeServerUrl(), { transports: ['websocket', 'polling'] });
+socket.on('connect', () => {
+  setSync(true);
+  socket.emit('state:register', { role: 'scoreboard', clientId: `scoreboard-${Math.random().toString(36).slice(2, 10)}` });
+});
+socket.on('disconnect', () => setSync(false));
+socket.on('state:init', applyState);
+socket.on('state:update', applyState);
+renderRanking();
+</script>
+</body>
+</html>
