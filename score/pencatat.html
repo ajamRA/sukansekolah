@@ -111,6 +111,19 @@ function setSync(isOnline) {
   syncStatus.className = 'rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase text-rose-700';
 }
 
+function triggerHaptic(points) {
+  if (!('vibrate' in navigator)) return;
+  if (points === 2) {
+    navigator.vibrate([18, 25, 18]);
+    return;
+  }
+  if (points === 1) {
+    navigator.vibrate(20);
+    return;
+  }
+  navigator.vibrate(8);
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -326,6 +339,7 @@ function addPointsToSelectedTeam(points) {
   const key = selectedTeamKey;
   state.scores[key] = Math.max(0, Number(state.scores[key]) || 0) + points;
   recordQuickPress(key, points);
+  triggerHaptic(points);
   syncFormFromState();
   emitState();
 }
