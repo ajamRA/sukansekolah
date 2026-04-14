@@ -340,7 +340,7 @@ function addPointsToSelectedTeam(points) {
   state.scores[key] = Math.max(0, Number(state.scores[key]) || 0) + points;
   recordQuickPress(key, points);
   triggerHaptic(points);
-  syncFormFromState();
+  renderTeams();
   emitState();
 }
 
@@ -465,7 +465,7 @@ socket.on('connect', () => {
 
 socket.on('disconnect', () => setSync(false));
 
-socket.on('state:init', (payload) => {
+function applyIncomingState(payload) {
   if (!payload) return;
   if (typeof payload.round === 'number') state.round = payload.round;
   if (payload.settings?.title) state.title = payload.settings.title;
@@ -501,7 +501,10 @@ socket.on('state:init', (payload) => {
     });
   }
   renderTeams();
-});
+}
+
+socket.on('state:init', applyIncomingState);
+socket.on('state:update', applyIncomingState);
 
 quickTeamButtons.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-team]');
@@ -537,8 +540,13 @@ teamGrid.addEventListener('click', (event) => {
   const key = button.dataset.key;
   const scoreInput = document.querySelector(`[data-role="score"][data-key="${key}"]`);
   const current = Math.max(0, Number(scoreInput?.value) || 0);
-  if (button.dataset.role === 'plus') scoreInput.value = String(current + 1);
+  if (button.dataset.role === 'plus') {
+    scoreInput.value = String(current + 1);
+    recordQuickPress(key, 1);
+    triggerHaptic(1);
+  }
   if (button.dataset.role === 'minus') scoreInput.value = String(Math.max(0, current - 1));
+  renderTeams();
   emitState();
 });
 
