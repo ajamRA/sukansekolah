@@ -58,6 +58,7 @@
 
     <footer class="mt-5 flex flex-wrap gap-2">
       <button id="saveBtn" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Simpan & Hantar Live</button>
+      <button id="exportPdfBtn" class="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-600">Export PDF</button>
       <button id="resetBtn" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-500">Reset Semua Mata</button>
       <a href="/tv" target="_blank" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-500">Buka Paparan TV</a>
     </footer>
@@ -89,6 +90,7 @@ const teamGrid = document.getElementById('teamGrid');
 const quickTeamButtons = document.getElementById('quickTeamButtons');
 const quickHint = document.getElementById('quickHint');
 const saveBtn = document.getElementById('saveBtn');
+const exportPdfBtn = document.getElementById('exportPdfBtn');
 const resetBtn = document.getElementById('resetBtn');
 
 function setSync(isOnline) {
@@ -166,6 +168,29 @@ function collectFormToState() {
   });
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function buildSortedTeams() {
+  return Object.keys(state.teamNames)
+    .map((key) => ({
+      key,
+      name: state.teamNames[key] || key,
+      score: Math.max(0, Number(state.scores[key]) || 0)
+    }))
+    .sort((a, b) => {
+      const diff = b.score - a.score;
+      if (diff !== 0) return diff;
+      return a.key.localeCompare(b.key);
+    });
+}
+
 function emitState() {
   collectFormToState();
   socket.emit('state:update', {
@@ -186,6 +211,69 @@ function addPointsToSelectedTeam(points) {
   state.scores[key] = Math.max(0, Number(state.scores[key]) || 0) + points;
   syncFormFromState();
   emitState();
+}
+
+function exportPdfReport() {
+  collectFormToState();
+  const sorted = buildSortedTeams();
+  const now = new Date();
+  const reportTime = now.toLocaleString('ms-MY', { hour12: false });
+
+  const rows = sorted.map((team, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${escapeHtml(team.name)}</td>
+      <td>${team.score}</td>
+    </tr>
+  `).join('');
+
+  const html = `<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <title>Laporan Markah - ${escapeHtml(state.title)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .meta { margin: 0 0 4px; font-size: 14px; color: #374151; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+    th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; font-size: 14px; }
+    th { background: #f3f4f6; }
+    .right { text-align: right; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(state.title)}</h1>
+  <p class="meta"><strong>Acara:</strong> ${escapeHtml(state.event || '-')}</p>
+  <p class="meta"><strong>Pusingan:</strong> ${escapeHtml(state.round)}</p>
+  <p class="meta"><strong>Masa Export:</strong> ${escapeHtml(reportTime)}</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 80px;">Ranking</th>
+        <th>Rumah</th>
+        <th class="right" style="width: 120px;">Markah</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+
+  const printWindow = window.open('', '_blank', 'width=900,height=700');
+  if (!printWindow) {
+    alert('Popup disekat browser. Benarkan popup untuk export PDF.');
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+  }, 300);
 }
 
 const socket = io(window.location.origin, { transports: ['websocket', 'polling'] });
@@ -254,6 +342,7 @@ titleInput.addEventListener('input', emitState);
 eventInput.addEventListener('input', emitState);
 roundInput.addEventListener('input', emitState);
 saveBtn.addEventListener('click', emitState);
+exportPdfBtn.addEventListener('click', exportPdfReport);
 resetBtn.addEventListener('click', () => {
   Object.keys(state.scores).forEach((key) => { state.scores[key] = 0; });
   syncFormFromState();
