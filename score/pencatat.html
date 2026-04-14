@@ -36,7 +36,10 @@
       <div class="mt-3">
         <label class="block">
           <span class="text-xs font-bold uppercase text-slate-500">Acara Semasa</span>
-          <input id="eventInput" type="text" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-orange-400 focus:ring" placeholder="Contoh: Larian 80m" />
+          <select id="eventInput" class="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold outline-none ring-orange-400 focus:ring">
+            <option value="Larian 80m">Larian 80m</option>
+            <option value="Lompat Jauh">Lompat Jauh</option>
+          </select>
         </label>
       </div>
     </header>
@@ -142,6 +145,10 @@ function renderTeams() {
 
   titleInput.value = state.title;
   eventInput.value = state.event;
+  if (!eventInput.value) {
+    eventInput.value = 'Larian 80m';
+    state.event = 'Larian 80m';
+  }
   roundInput.value = String(state.round);
   syncFormFromState();
   renderQuickTeams();
